@@ -63,6 +63,10 @@ int ist30xx_batt_chk_cnt = 0;
 int ist30xx_batt_chk_max_cnt = IST30XX_MAX_CHK_CNT;
 #endif
 
+#ifdef CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE
+#include <linux/input/doubletap2wake.h>
+#endif
+
 #define TOUCH_BOOSTER	1
 
 #if TOUCH_BOOSTER
@@ -1006,14 +1010,28 @@ static void ist30xx_early_suspend(struct early_suspend *h)
 	struct ist30xx_data *data = container_of(h, struct ist30xx_data,
 						 early_suspend);
 
-	ist30xx_suspend(&data->client->dev);
+#ifdef CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE
+        if (!dt2w_switch) {
+#endif
+		ist30xx_suspend(&data->client->dev);
+#ifdef CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE
+	}
+#endif
+
 }
 static void ist30xx_late_resume(struct early_suspend *h)
 {
 	struct ist30xx_data *data = container_of(h, struct ist30xx_data,
 						 early_suspend);
 
-	ist30xx_resume(&data->client->dev);
+#ifdef CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE
+	if (!dt2w_switch) {
+#endif
+		ist30xx_resume(&data->client->dev);
+#ifdef CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE
+	}
+#endif
+
 }
 #endif
 
