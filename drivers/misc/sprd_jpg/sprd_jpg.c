@@ -150,7 +150,11 @@ static int find_jpg_freq_level(unsigned long freq)
 
 static void disable_jpg (struct jpg_fh *jpg_fp)
 {
-    clk_disable(jpg_hw_dev.jpg_clk);
+    if(1 == jpg_fp->is_clock_enabled)
+    {
+        clk_disable(jpg_hw_dev.jpg_clk);
+    }
+
     jpg_fp->is_clock_enabled= 0;
     pr_debug("jpg ioctl JPG_DISABLE\n");
 
@@ -468,7 +472,7 @@ static int jpg_nocache_mmap(struct file *filp, struct vm_area_struct *vma)
     vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
     vma->vm_pgoff     = (sprd_jpg_phys>>PAGE_SHIFT);
     if (remap_pfn_range(vma,vma->vm_start, vma->vm_pgoff,
-                        vma->vm_end - vma->vm_start, vma->vm_page_prot))
+                       (vma->vm_end - vma->vm_start), vma->vm_page_prot))
         return -EAGAIN;
     printk(KERN_INFO "@jpg mmap %x,%x,%x\n", (unsigned int)PAGE_SHIFT,
            (unsigned int)vma->vm_start,
@@ -519,8 +523,14 @@ static int jpg_open(struct inode *inode, struct file *filp)
 
 
     printk("JPEG mmi_clk open");
-    clk_enable(jpg_hw_dev.mm_clk);
+    ret = clk_enable(jpg_hw_dev.mm_clk);
 
+    if (ret) {
+        printk(KERN_ERR "###:jpg_hw_dev.mm_clk: clk_prepare_enable() failed!\n");
+        goto errout0;
+    } else {
+        pr_debug("###jpg_hw_dev.mm_clk: clk_prepare_enable() ok.\n");
+    }
 
 #ifdef CONFIG_OF
     clk_jpg= of_clk_get_by_name(jpg_hw_dev.dev_np, "clk_jpg");
@@ -532,7 +542,7 @@ static int jpg_open(struct inode *inode, struct file *filp)
                "clk_vsp");
         printk(KERN_ERR "###: jpg_clk =  %p\n", clk_jpg);
         ret = -EINVAL;
-        goto errout;
+        goto errout0;
     } else {
         jpg_hw_dev.jpg_clk = clk_jpg;
     }
@@ -543,7 +553,7 @@ static int jpg_open(struct inode *inode, struct file *filp)
         printk(KERN_ERR "clock[%s]: failed to get parent in probe[%s] \
 by clk_get()!\n", "clk_jpg", name_parent);
         ret = -EINVAL;
-        goto errout;
+        goto errout1;
     } else {
         jpg_hw_dev.jpg_parent_clk = clk_parent;
     }
@@ -553,7 +563,7 @@ by clk_get()!\n", "clk_jpg", name_parent);
         printk(KERN_ERR "clock[%s]: clk_set_parent() failed in probe!",
                "clk_jpg");
         ret = -EINVAL;
-        goto errout;
+        goto errout2;
     }
 
     printk("jpg parent clock name %s\n", name_parent);
@@ -569,19 +579,24 @@ by clk_get()!\n", "clk_jpg", name_parent);
     printk(KERN_INFO "jpg_open %p\n", jpg_fp);
     return 0;
 
-errout:
+errout2:
+
+    if (jpg_hw_dev.jpg_parent_clk) {
+        clk_put(jpg_hw_dev.jpg_parent_clk);
+    }
+errout1:
+    if (jpg_hw_dev.jpg_clk) {
+        clk_put(jpg_hw_dev.jpg_clk);
+    }
+errout0:
 #if defined(CONFIG_ARCH_SCX35)
     if (jpg_hw_dev.mm_clk) {
         clk_put(jpg_hw_dev.mm_clk);
     }
 #endif
-    if (jpg_hw_dev.jpg_clk) {
-        clk_put(jpg_hw_dev.jpg_clk);
-    }
 
-    if (jpg_hw_dev.jpg_parent_clk) {
-        clk_put(jpg_hw_dev.jpg_parent_clk);
-    }
+errout:
+
     return ret;
 }
 
